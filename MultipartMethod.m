@@ -34,6 +34,11 @@
 @interface MultipartMethod ()
 
 @property (nonatomic, strong) NSString* contentType;
+@property (nonatomic, strong) NSURLSession *session;
+@property (nonatomic, strong) NSURLSessionDataTask *task;
+@property (nonatomic, assign) NSUInteger tryCount;
+@property(nonatomic, strong) NSDate *lastAttemptTime;
+@property(nonatomic, strong) NSDate *initialAttemptTime;
 
 @end
 
@@ -71,6 +76,10 @@
 
 - (void)setTimeout:(int)timeoutValue {
 	timeoutInSeconds = timeoutValue;
+}
+
+- (int)timeout {
+    return timeoutInSeconds;
 }
 
 //*****A private method to generate a random boundary string for multipart data*****
@@ -147,6 +156,8 @@
 - (HttpResponse*)executeSynchronouslyAtURL:(NSURL*)methodURL error:(NSError**) error {
 	NSMutableURLRequest * urlRequest = [[NSMutableURLRequest alloc] init];
 	
+    self.tryCount++;
+    
 	[self prepareRequestWithURL:methodURL withRequest:urlRequest];
     NSData *requestBodyData = [urlRequest HTTPBody];
     DLog(@"Request url=%@, headers=%@, body=%@", [urlRequest URL], headers, requestBodyData.length < 4096 ? [[NSString alloc] initWithData:requestBodyData encoding:encoding] : [NSString stringWithFormat:@"(length=%lu)", (unsigned long)requestBodyData.length]);
@@ -168,15 +179,32 @@
 	return HTTPResponse;
 }
 
-- (void)executeAsynchronouslyAtURL:(NSURL*)methodURL withDelegate:(id<HttpClientDelegate,NSObject>)delegate {
+- (void)executeAsynchronouslyAtURL:(NSURL*)methodURL withHandler:(MethodHandler)methodHandler {
 	
 	NSMutableURLRequest * urlRequest = [[NSMutableURLRequest alloc] init];
 	
+    self.tryCount++;
+    
+    self.lastAttemptTime = [NSDate date];
+    
+    if (self.initialAttemptTime == nil){
+        self.initialAttemptTime = [NSDate date];
+    }
+    
 	[self prepareRequestWithURL:methodURL withRequest:urlRequest];
 	
-	DelegateMessenger * messenger = [DelegateMessenger delegateMessengerWithDelegate:delegate];
-		
-	[NSURLConnection connectionWithRequest:urlRequest delegate:messenger];
+    self.session = [NSURLSession sharedSession];
+    
+    self.task = [self.session dataTaskWithRequest:urlRequest completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        
+        if (methodHandler != nil) {
+            methodHandler(data, response, error);
+        }
+        
+    }];
+    
+    [self.task resume];
+
 }
 
 @end

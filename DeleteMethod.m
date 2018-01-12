@@ -31,15 +31,8 @@
 
 @implementation DeleteMethod
 
-- (HttpResponse*)executeSynchronouslyAtURL:(NSURL*)methodURL {
-	return [self executeSynchronouslyAtURL:methodURL error:NULL];
-}
-- (HttpResponse*)executeSynchronouslyAtURL:(NSURL*)methodURL error:(NSError**) error {
-	return [super executeMethodSynchronously:methodURL methodType:@"DELETE" dataInBody:YES contentType:contentType ? contentType : @"application/x-www-form-urlencoded" error:error];
-}
-
-- (void)executeAsynchronouslyAtURL:(NSURL*)methodURL withDelegate:(id<HttpClientDelegate,NSObject>)delegate {
-	[super executeMethodAsynchronously:methodURL methodType:@"DELETE" dataInBody:YES contentType:contentType ? contentType :@"application/x-www-form-urlencoded" withDelegate:delegate];
+- (void)executeAsynchronouslyAtURL:(NSURL*)methodURL withHandler:(MethodHandler)methodHandler {
+	[super executeMethodAsynchronously:methodURL methodType:@"DELETE" dataInBody:YES contentType:contentType ? contentType :@"application/x-www-form-urlencoded" withHandler:methodHandler];
 }
 
 - (void) setBody:(NSData*) inBody contentType:(NSString*) inContentType {

@@ -30,6 +30,17 @@
 #import "DelegateMessenger.h"
 #import "LolayHttpClientGlobals.h"
 
+@interface BasicMethod()
+
+@property(nonatomic, strong) NSURLSession *session;
+@property(nonatomic, strong) NSURLSessionDataTask *task;
+@property(nonatomic, assign) NSUInteger tryCount;
+@property(nonatomic, strong) NSDate *lastAttemptTime;
+@property(nonatomic, strong) NSDate *initialAttemptTime;
+@property(nonatomic, assign) NSTimeInterval maxTimeToTry;
+
+@end
+
 @implementation BasicMethod
 
 - (id)init {
@@ -50,6 +61,10 @@
 
 - (void)setTimeout:(int)timeoutValue {
 	timeoutInSeconds = timeoutValue;
+}
+
+- (int)timeout {
+    return timeoutInSeconds;
 }
 
 - (void)setCachePolicy:(NSURLRequestCachePolicy) cachePolicyValue {
@@ -193,52 +208,95 @@
 	} 
 }
 
-- (HttpResponse*)executeMethodSynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType error:(NSError**) error {
-	
-	//Create a new URL request object
+//- (HttpResponse*)executeMethodSynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType error:(NSError**) error {
+//    
+//    //Create a new URL request object
+//    NSMutableURLRequest * request = [[NSMutableURLRequest alloc] init];
+//    
+//    self.tryCount++;
+//    request.timeoutInterval = timeoutInSeconds;
+//
+//    self.lastAttemptTime = [NSDate date];
+//    
+//    if (self.initialAttemptTime == nil) {
+//        self.initialAttemptTime = [NSDate date];
+//    }
+//    
+//    if(cachePolicy != NSURLRequestUseProtocolCachePolicy) {
+//        [request setCachePolicy:cachePolicy];
+//    }
+//    
+//    [request setHTTPShouldHandleCookies: handleCookies];
+//    
+//    [self prepareMethod:methodURL methodType:methodType dataInBody:dataInBody contentType:contentType withRequest:request];
+//    
+//    NSString* requestBody = [self bodyString];
+//    DLog(@"Request url=%@, headers=%@, parameters=%@, body=%@", [request URL], [self headers], [self parameters], requestBody.length < 4096 ? requestBody : [NSString stringWithFormat:@"(length=%lu)", (unsigned long) requestBody.length]);
+//
+//    //Execute the HTTP method, saving the return data
+//    NSHTTPURLResponse * response;
+//    NSError* errorResponse = nil;
+//    NSData *returnData = [NSURLConnection sendSynchronousRequest:request returningResponse:&response error:&errorResponse];
+//    HttpResponse * responseObject = [[HttpResponse alloc] initWithHttpURLResponse:response withData:returnData];
+//    
+//    if (errorResponse) {
+//        DLog(@"Error url=%@, error=%@", [request URL], errorResponse);
+//        if (error != NULL) {
+//            *error = errorResponse;
+//        }
+//    }
+//    
+//    DLog(@"Response url=%@, status=%li, headers=%@, body=%@", [request URL], (long) [responseObject statusCode], [responseObject headerFields], [responseObject responseString]);
+//    
+//    return responseObject;
+//}
+
+- (void)executeMethodAsynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType withHandler:(MethodHandler)methodHandler {
 	NSMutableURLRequest * request = [[NSMutableURLRequest alloc] init];
+	
+    request.timeoutInterval = timeoutInSeconds;
     
-    if(cachePolicy != NSURLRequestUseProtocolCachePolicy) {
-        [request setCachePolicy:cachePolicy];
+    self.tryCount++;
+    self.lastAttemptTime = [NSDate date];
+    
+    if (self.initialAttemptTime == nil) {
+        self.initialAttemptTime = [NSDate date];
     }
-	
-	[request setHTTPShouldHandleCookies: handleCookies];
-	
-	[self prepareMethod:methodURL methodType:methodType dataInBody:dataInBody contentType:contentType withRequest:request];
-	
-	NSString* requestBody = [self bodyString];
-	DLog(@"Request url=%@, headers=%@, parameters=%@, body=%@", [request URL], [self headers], [self parameters], requestBody.length < 4096 ? requestBody : [NSString stringWithFormat:@"(length=%lu)", (unsigned long) requestBody.length]);
-
-	//Execute the HTTP method, saving the return data
-	NSHTTPURLResponse * response;
-	NSError* errorResponse = nil;
-	NSData *returnData = [NSURLConnection sendSynchronousRequest:request returningResponse:&response error:&errorResponse];
-	HttpResponse * responseObject = [[HttpResponse alloc] initWithHttpURLResponse:response withData:returnData];
-	
-	if (errorResponse) {
-		DLog(@"Error url=%@, error=%@", [request URL], errorResponse);
-		if (error != NULL) {
-			*error = errorResponse;
-		}
-	}
-	
-	DLog(@"Response url=%@, status=%li, headers=%@, body=%@", [request URL], (long) [responseObject statusCode], [responseObject headerFields], [responseObject responseString]);
-	
-	return responseObject;
-}
-
-- (void)executeMethodAsynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType withDelegate:(id<HttpClientDelegate,NSObject>)delegate {
-	NSMutableURLRequest * request = [[NSMutableURLRequest alloc] init];
-	
+    
 	[self prepareMethod:methodURL methodType:methodType dataInBody:dataInBody contentType:contentType withRequest:request];
 
 	NSString* requestBody = [self bodyString];
 	DLog(@"Request url=%@, headers=%@, parameters=%@, body=%@", [request URL], [self headers], [self parameters], requestBody.length < 4096 ? requestBody : [NSString stringWithFormat:@"(length=%lu)", (unsigned long) requestBody.length]);
 
 	//Execute the HTTP method
-	DelegateMessenger * messenger = [DelegateMessenger delegateMessengerWithDelegate:delegate];
+	//DelegateMessenger * messenger = [DelegateMessenger delegateMessengerWithDelegate:delegate];
 	
-	[NSURLConnection connectionWithRequest:request delegate:messenger];
+	//[NSURLConnection connectionWithRequest:request delegate:messenger];
+
+    __weak BasicMethod *method = self;
+    
+    if (!self.cancelled) {
+    self.session = [NSURLSession sharedSession];
+    
+    self.task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        
+        // make sure to not call back if we were cancelled during our task.
+        if (methodHandler != nil && !method.cancelled) {
+            methodHandler(data, response, error);
+        }
+        
+    }];
+    
+    [self.task resume];
+    }
+}
+
+-(void) cancel {
+    [self.task cancel];
+    self.session = nil;
+    self.task = nil;
+    self.cancelled = YES;
+    self.lastAttemptTime = nil;
 }
 
 @end

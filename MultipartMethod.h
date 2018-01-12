@@ -41,6 +41,11 @@
 	int timeoutInSeconds;
 }
 
+@property (readonly, nonatomic, assign) NSUInteger tryCount;
+@property(nonatomic, assign) BOOL cancelled;
+@property(nonatomic, readonly, strong) NSDate *lastAttemptTime;
+@property(nonatomic, readonly, strong) NSDate *initialAttemptTime;
+
 /**
  * Init with an alternative content-type
  * @param contentType The contentType
@@ -52,6 +57,7 @@
  * @param timeoutValue The timeout, in seconds
  */
 - (void)setTimeout:(int)timeoutValue;
+- (int)timeout;
 
 /**
  * Add a part to the multipart request.  Order of the parts is not guaranteed.

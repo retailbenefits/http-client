@@ -29,6 +29,8 @@
 #import "HttpMethod.h"
 #import "HttpClientDelegate.h"
 
+
+
 /**
  * BasicMethod is a superclass for the various HTTP client methods.  It isn't meant to be instatiated by client classes, and is just used to hold some common functionality in a super-class.
  * @author Scott Slaugh
@@ -44,6 +46,11 @@
 	BOOL encodeParameterNames;
 }
 
+@property(nonatomic, readonly, assign) NSUInteger tryCount;
+@property(nonatomic, assign) BOOL cancelled;
+@property(nonatomic, readonly, strong) NSDate *lastAttemptTime;
+@property(nonatomic, readonly, strong) NSDate *initialAttemptTime;
+
 - (NSDictionary*) parameters;
 - (NSDictionary*) headers;
 - (NSData*) body;
@@ -54,6 +61,7 @@
  * @param timeoutValue The timeout, in seconds
  */
 - (void)setTimeout:(int)timeoutValue;
+- (int)timeout;
 
 - (void)setCachePolicy:(NSURLRequestCachePolicy)cachePolicyValue;
 
@@ -90,7 +98,7 @@
  * @param contentType The value to use for the Content-Type field in the header
  * @return A string containing whatever the was sent back after performing the GET or POST
  */
-- (HttpResponse*)executeMethodSynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType error:(NSError**) error;
+//- (HttpResponse*)executeMethodSynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType error:(NSError**) error;
 /**
  * This method executes the HttpMethod asynchronously
  * @param methodURL The URL to be used to execute the method
@@ -99,6 +107,8 @@
  * @param contentType The value to use for the Content-Type field in the header
  * @param delegate The object to receive HttpClientDelegate methods
  */
-- (void)executeMethodAsynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType withDelegate:(id<HttpClientDelegate>)delegate;
+- (void)executeMethodAsynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType withHandler:(MethodHandler)methodHandler;
+
+-(void) cancel;
 
 @end
