@@ -130,7 +130,8 @@
 	}
 	
     NSString *newString = [string stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
-    newString = [newString stringByReplacingOccurrencesOfString:@" " withString:@"+"];
+    newString = [[newString stringByReplacingOccurrencesOfString:@" " withString:@"+"] stringByReplacingOccurrencesOfString:@"&" withString:@"%26"];
+    
     if (newString) {
         return newString;
     }
