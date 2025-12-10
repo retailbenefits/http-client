@@ -139,74 +139,113 @@
 }
 
 - (void)prepareMethod:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType withRequest:(NSMutableURLRequest*)request {
-	//Set the destination URL
-	[request setURL:methodURL];
-	//Set the method type
-	[request setHTTPMethod:methodType];
-	//Set the content-type
-    
-    if([headers objectForKey:@"Content-Type"] == nil) {
-        [request addValue:contentType forHTTPHeaderField:@"Content-Type"];
+  //Set the destination URL
+  [request setURL:methodURL];
+  //Set the method type
+  [request setHTTPMethod:methodType];
+
+  if([headers objectForKey:@"Content-Type"] == nil) {
+    [request addValue:contentType forHTTPHeaderField:@"Content-Type"];
+  }
+  //Set the timeout
+  [request setTimeoutInterval:timeoutInSeconds];
+  //Gzip header
+  if([headers objectForKey:@"Accept-Encoding"] == nil) {
+    [request addValue:@"gzip" forHTTPHeaderField:@"Accept-Encoding"];
+  }
+
+  //Create a data object to hold the body while we're creating it
+  if (! body) {
+    NSMutableData * bodyData = [[NSMutableData alloc] init];
+
+    static NSDateFormatter *isoFormatter = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      isoFormatter = [[NSDateFormatter alloc] init];
+      [isoFormatter setDateFormat:@"yyyy-MM-dd'T'HH:mm:ss'Z'"];
+      [isoFormatter setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
+    });
+
+    int cCount = 0;
+    for (NSString* cKey in params) {
+      cCount++;
+      if (cCount > 1) {
+        [bodyData appendData:[@"&" dataUsingEncoding:encoding]];
+      }
+
+      id value = [params valueForKey:cKey];
+      NSString* encodedKey = encodeParameterNames ? [self encodeUrl:cKey] : cKey;
+
+      if ([value isKindOfClass:[NSArray class]] || [value isKindOfClass:[NSMutableArray class]]) {
+
+        // --- THIS IS THE FIX ---
+        // Create the special key for arrays: "key[]"
+        NSString *arrayKey = [NSString stringWithFormat:@"%@[]", encodedKey];
+
+        int pCount = 0;
+        for (id arrayValue in (NSArray *)value) {
+          pCount++;
+          if (pCount > 1) {
+            [bodyData appendData:[@"&" dataUsingEncoding:encoding]];
+          }
+
+          // Convert the item (which could be string, number) to a string
+          NSString *stringValue;
+          if ([arrayValue isKindOfClass:[NSString class]]) {
+            stringValue = (NSString *)arrayValue;
+          } else if ([arrayValue isKindOfClass:[NSNumber class]]) {
+            stringValue = [arrayValue stringValue];
+          } else {
+            stringValue = [NSString stringWithFormat:@"%@", arrayValue];
+          }
+
+          // Send as: key[]=val1&key[]=val2
+          [bodyData appendData:[[NSString stringWithFormat:@"%@=%@", arrayKey, [self encodeUrl:stringValue]] dataUsingEncoding:encoding]];
+        }
+
+      } else {
+        // --- THIS IS CORRECT ---
+        // (Handles NSNumber, NSDate, NSString)
+        NSString *stringValue;
+
+        if ([value isKindOfClass:[NSString class]]) {
+          stringValue = (NSString *)value;
+        } else if ([value isKindOfClass:[NSNumber class]]) {
+          // Booleans/Numbers are sent as "1", "0", "123"
+          // This is the standard.
+          stringValue = [value stringValue];
+        } else if ([value isKindOfClass:[NSDate class]]) {
+          stringValue = [isoFormatter stringFromDate:(NSDate *)value];
+        } else if ([value isEqual:[NSNull null]]) {
+          stringValue = @"";
+        } else {
+          // Fallback for any other type (prevents crash)
+          stringValue = [NSString stringWithFormat:@"%@", value];
+        }
+
+        [bodyData appendData:[[NSString stringWithFormat:@"%@=%@", encodedKey, [self encodeUrl:stringValue]] dataUsingEncoding:encoding]];
+      }
     }
-	//Set the timeout
-	[request setTimeoutInterval:timeoutInSeconds];
-	//Gzip header
-    if([headers objectForKey:@"Accept-Encoding"] == nil) {
-        [request addValue:@"gzip" forHTTPHeaderField:@"Accept-Encoding"];
+    body = bodyData;
+  }
+
+  //Loop over the items in the headers dictionary and add them to the request
+  for (NSString* cHeaderKey in headers) {
+    [request addValue:[headers valueForKey:cHeaderKey] forHTTPHeaderField:cHeaderKey];
+  }
+
+  //Add the body data in either the actual HTTP body or as part of the URL query
+  if (dataInBody || [body length] > 0) {
+    if ([methodType isEqualToString:@"POST"]|| [methodType isEqualToString:@"PUT"]) {
+      [request setHTTPBody:body];
+    } else if ([methodType isEqualToString:@"GET"]|| [methodType isEqualToString:@"DELETE"] ) {
+      NSMutableString * newURLString = [[NSMutableString alloc] initWithString:[methodURL absoluteString]];
+      NSString * bodyString = [[NSString alloc] initWithData:body encoding:encoding];
+      [newURLString appendFormat:@"?%@", bodyString];
+      NSURL * newURL = [NSURL URLWithString:newURLString];
+      [request setURL:newURL];
     }
-	
-	//Create a data object to hold the body while we're creating it
-	if (! body) {
-		NSMutableData * bodyData = [[NSMutableData alloc] init];
-		
-		//Loop over all the items in the parameters dictionary and add them to the body
-		int cCount = 0;
-		for (NSString* cKey in params) {
-			cCount++;
-			//If we've already added at least one data item, we need to add the & character between each new data item
-			if (cCount > 1) {
-				[bodyData appendData:[@"&" dataUsingEncoding:encoding]];
-			}
-			
-			//Add the parameter
-			if ([[params valueForKey:cKey] isKindOfClass:[NSMutableArray class]]) {
-				int pCount = 0;
-				for (NSString* arrayValue in (NSMutableArray*)[params valueForKey:cKey]) {
-					pCount++;
-					if (pCount > 1) {
-						[bodyData appendData:[@"&" dataUsingEncoding:encoding]];
-					}
-					[bodyData appendData:[[NSString stringWithFormat:@"%@=%@", encodeParameterNames ? [self encodeUrl:cKey] : cKey, [self encodeUrl:arrayValue]] dataUsingEncoding:encoding]];
-				}
-			} else {
-				[bodyData appendData:[[NSString stringWithFormat:@"%@=%@", encodeParameterNames ? [self encodeUrl:cKey] : cKey, [self encodeUrl:[params valueForKey:cKey]]] dataUsingEncoding:encoding]];
-			}
-		}
-		body = bodyData;
-	}
-		
-	//Loop over the items in the headers dictionary and add them to the request
-	for (NSString* cHeaderKey in headers) {
-		[request addValue:[headers valueForKey:cHeaderKey] forHTTPHeaderField:cHeaderKey];
-	}
-	
-	//Add the body data in either the actual HTTP body or as part of the URL query
-	if (dataInBody || [body length] > 0) { 
-		if ([methodType isEqualToString:@"POST"]|| [methodType isEqualToString:@"PUT"]) {  //For post/put methods, we add the parameters to the body
-			[request setHTTPBody:body];
-		} else if ([methodType isEqualToString:@"GET"]|| [methodType isEqualToString:@"DELETE"] ) { //For get methods, we have to add parameters to the url
-			//Get a mutable string so that we can add the parameters to the end as query arguments
-			NSMutableString * newURLString = [[NSMutableString alloc] initWithString:[methodURL absoluteString]];
-			//Convert the body data into a string
-			NSString * bodyString = [[NSString alloc] initWithData:body encoding:encoding];
-			//Append the body data as a URL query
-			[newURLString appendFormat:@"?%@", bodyString];
-			//Create a new URL, escaping characters as necessary
-			NSURL * newURL = [NSURL URLWithString:newURLString];
-			//Set the url request's url to be this new URL with the query appended
-			[request setURL:newURL];			
-		}
-	} 
+  }
 }
 
 //- (HttpResponse*)executeMethodSynchronously:(NSURL*)methodURL methodType:(NSString*)methodType dataInBody:(bool)dataInBody contentType:(NSString*)contentType error:(NSError**) error {
